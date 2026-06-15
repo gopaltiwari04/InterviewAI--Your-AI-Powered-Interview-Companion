@@ -1,0 +1,139 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CANDIDATE
+  INTERVIEWER
+  ADMIN
+}
+
+// NextAuth Required Models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String                 @id @default(cuid())
+  name          String?
+  email         String?                @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  role          Role                   @default(CANDIDATE)
+  accounts      Account[]
+  sessions      Session[]
+  participants  InterviewParticipant[]
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+enum InterviewRoomStatus {
+  ACTIVE
+  COMPLETED
+}
+
+enum InterviewEventType {
+  AI_CHAT_MESSAGE
+  CODE_EXECUTION
+  CODE_CHANGE
+  USER_JOINED
+  USER_LEFT
+}
+
+model InterviewRoom {
+  id     String              @id @default(cuid())
+  status InterviewRoomStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  participants InterviewParticipant[]
+  events       InterviewEvent[]
+  report       InterviewReport?
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model InterviewParticipant {
+  id String @id @default(cuid())
+
+  roomId String
+  userId String
+
+  joinedAt DateTime @default(now())
+
+  room InterviewRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+}
+
+model InterviewEvent {
+  id String @id @default(cuid())
+
+  roomId    String
+  eventType InterviewEventType
+
+  payload Json
+
+  timestamp DateTime @default(now())
+
+  room InterviewRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
+
+model InterviewReport {
+  id String @id @default(cuid())
+
+  roomId String @unique
+
+  techScore    Int
+  commScore    Int
+  overallScore Int
+
+  strengths  String[]
+  weaknesses String[]
+
+  aiFeedback String @db.Text
+
+  createdAt DateTime @default(now())
+
+  room InterviewRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
