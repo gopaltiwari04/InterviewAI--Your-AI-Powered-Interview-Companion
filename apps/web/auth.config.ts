@@ -26,12 +26,18 @@ const authConfig: NextAuthConfig = {
     return true;
   },
     async jwt({ token, user }: any) {
-      if (user) {
-        token.id = user.id
-        token.role = user.role
-      }
-      return token
-    },
+  console.log("JWT_CALLBACK", {
+    tokenSub: token.sub,
+    userId: user?.id,
+  });
+
+  if (user) {
+    token.id = user.id;
+    token.role = user.role;
+  }
+
+  return token;
+},
 
     async session({ session, token }: any) {
       if (session.user) {
