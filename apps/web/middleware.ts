@@ -4,24 +4,25 @@ import { NextResponse } from "next/server"
 
 export default async function middleware(req: NextRequest) {
   const token = await getToken({
-  req,
-  secret: process.env.AUTH_SECRET,
-})
+    req,
+    secret: process.env.AUTH_SECRET,
+  })
+
   const isLoggedIn = !!token
   const { pathname } = req.nextUrl
 
   const isAuthRoute = pathname.startsWith("/login")
-  const isProtectedRoute =
-    pathname.startsWith("/dashboard") //||
-    //pathname.startsWith("/interview")                 {REMOVE THIS}
+  const isProtectedRoute = pathname.startsWith("/dashboard")
 
   if (isAuthRoute && isLoggedIn) {
-    return NextResponse.redirect(new URL("/dashboard", req.nextUrl))
+    return NextResponse.redirect(new URL("/dashboard", req.url))
   }
 
   if (isProtectedRoute && !isLoggedIn) {
-    return NextResponse.redirect(new URL("/login", req.nextUrl))
+    return NextResponse.redirect(new URL("/login", req.url))
   }
+
+  return NextResponse.next()
 }
 
 export const config = {

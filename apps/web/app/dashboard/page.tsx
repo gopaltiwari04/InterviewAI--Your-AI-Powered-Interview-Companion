@@ -15,7 +15,15 @@ type DashboardInterviewRoom = {
 
 export default async function DashboardPage() {
   const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+
+console.log(
+  "SESSION_DEBUG",
+  JSON.stringify(session, null, 2)
+);
+
+if (!session?.user?.id) {
+  redirect("/login");
+}
 
   const userInterviews = await db.interviewRoom.findMany({
     where: {
