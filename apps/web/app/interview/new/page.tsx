@@ -10,10 +10,11 @@ export default async function NewInterviewPage() {
   }
 
   const room = await db.interviewRoom.create({
-    data: {
-      status: "ACTIVE",
-    },
-  });
+  data: {
+    status: "ACTIVE",
+    userId: session.user.id,
+  },
+});
 
   await db.interviewParticipant.create({
     data: {
