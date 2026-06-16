@@ -54,6 +54,8 @@ model User {
   participants  InterviewParticipant[]
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
+
+  rooms         InterviewRoom[]        @relation("UserRooms")
 }
 
 model VerificationToken {
@@ -88,8 +90,8 @@ model InterviewRoom {
   events       InterviewEvent[]
   report       InterviewReport?
 
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User @relation("UserRooms", fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model InterviewParticipant {
