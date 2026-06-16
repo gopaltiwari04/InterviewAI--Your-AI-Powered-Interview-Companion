@@ -8,8 +8,6 @@ export default async function middleware(req: NextRequest) {
     secret: process.env.AUTH_SECRET,
   });
 
-  console.log("MIDDLEWARE_TOKEN", token);
-
   const isLoggedIn = !!token;
   const { pathname } = req.nextUrl;
 
