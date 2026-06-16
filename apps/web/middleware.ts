@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 export default async function middleware(req: NextRequest) {
   const token = await getToken({
     req,
-    secret: process.env.AUTH_SECRET,
+    //secret: process.env.AUTH_SECRET,
   });
 
   const isLoggedIn = !!token;
