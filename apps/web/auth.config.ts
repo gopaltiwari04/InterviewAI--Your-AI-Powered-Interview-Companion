@@ -1,10 +1,18 @@
 import GitHub from "next-auth/providers/github"
 import Google from "next-auth/providers/google"
+import type { NextAuthConfig } from "next-auth"
 
-export default {
+// 1. Explicitly type the variable as NextAuthConfig
+const authConfig: NextAuthConfig = {
   providers: [
-    GitHub,
-    Google,
+    GitHub({
+      clientId: process.env.AUTH_GITHUB_ID,
+      clientSecret: process.env.AUTH_GITHUB_SECRET,
+    }),
+    Google({
+      clientId: process.env.AUTH_GOOGLE_ID,
+      clientSecret: process.env.AUTH_GOOGLE_SECRET,
+    }),
   ],
   session: {
     strategy: "jwt",
@@ -27,3 +35,6 @@ export default {
     },
   },
 }
+
+// 2. Export the pre-typed variable
+export default authConfig;
