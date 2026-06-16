@@ -7,28 +7,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  CANDIDATE
-  INTERVIEWER
-  ADMIN
-}
-
-// NextAuth Required Models
 model Account {
   id                String  @id @default(cuid())
   userId            String
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
@@ -49,13 +41,12 @@ model User {
   image         String?
   passwordHash  String?
   role          Role                   @default(CANDIDATE)
-  accounts      Account[]
-  sessions      Session[]
-  participants  InterviewParticipant[]
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
-
+  accounts      Account[]
+  participants  InterviewParticipant[]
   rooms         InterviewRoom[]        @relation("UserRooms")
+  sessions      Session[]
 }
 
 model VerificationToken {
@@ -64,6 +55,57 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+model InterviewRoom {
+  id           String                 @id @default(cuid())
+  status       InterviewRoomStatus    @default(ACTIVE)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  userId       String
+  events       InterviewEvent[]
+  participants InterviewParticipant[]
+  report       InterviewReport?
+  user         User                   @relation("UserRooms", fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model InterviewParticipant {
+  id       String        @id @default(cuid())
+  roomId   String
+  userId   String
+  joinedAt DateTime      @default(now())
+  room     InterviewRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+}
+
+model InterviewEvent {
+  id        String             @id @default(cuid())
+  roomId    String
+  eventType InterviewEventType
+  payload   Json
+  timestamp DateTime           @default(now())
+  room      InterviewRoom      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
+
+model InterviewReport {
+  id           String        @id @default(cuid())
+  roomId       String        @unique
+  techScore    Int
+  commScore    Int
+  overallScore Int
+  strengths    String[]
+  weaknesses   String[]
+  aiFeedback   String
+  createdAt    DateTime      @default(now())
+  room         InterviewRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
+
+enum Role {
+  CANDIDATE
+  INTERVIEWER
+  ADMIN
 }
 
 enum InterviewRoomStatus {
@@ -77,65 +119,4 @@ enum InterviewEventType {
   CODE_CHANGE
   USER_JOINED
   USER_LEFT
-}
-
-model InterviewRoom {
-  id     String              @id @default(cuid())
-  status InterviewRoomStatus @default(ACTIVE)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  participants InterviewParticipant[]
-  events       InterviewEvent[]
-  report       InterviewReport?
-
-  userId String
-  user   User @relation("UserRooms", fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model InterviewParticipant {
-  id String @id @default(cuid())
-
-  roomId String
-  userId String
-
-  joinedAt DateTime @default(now())
-
-  room InterviewRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([roomId, userId])
-}
-
-model InterviewEvent {
-  id String @id @default(cuid())
-
-  roomId    String
-  eventType InterviewEventType
-
-  payload Json
-
-  timestamp DateTime @default(now())
-
-  room InterviewRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-}
-
-model InterviewReport {
-  id String @id @default(cuid())
-
-  roomId String @unique
-
-  techScore    Int
-  commScore    Int
-  overallScore Int
-
-  strengths  String[]
-  weaknesses String[]
-
-  aiFeedback String @db.Text
-
-  createdAt DateTime @default(now())
-
-  room InterviewRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
 }
