@@ -18,6 +18,13 @@ const authConfig: NextAuthConfig = {
     strategy: "jwt",
   },
   callbacks: {
+    async signIn({ user, account, profile }) {
+    console.log("SIGNIN_CALLBACK", {
+      user,
+      provider: account?.provider,
+    });
+    return true;
+  },
     async jwt({ token, user }: any) {
       if (user) {
         token.id = user.id
