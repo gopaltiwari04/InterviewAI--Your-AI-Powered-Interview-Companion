@@ -4,9 +4,10 @@ import { NextResponse } from "next/server";
 
 export default async function middleware(req: NextRequest) {
   const token = await getToken({
-    req,
-    //secret: process.env.AUTH_SECRET,
-  });
+  req,
+  secret: process.env.AUTH_SECRET,
+  secureCookie: true,
+});
 
   const isLoggedIn = !!token;
   const { pathname } = req.nextUrl;
