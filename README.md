@@ -1,6 +1,6 @@
-# InterviewAI [Live Deployed Website: https://interviewai-nine-theta.vercel.app/]
+# InterviewAI 
 
-An AI-powered technical interview platform that simulates real coding interviews, evaluates candidate performance, and generates detailed assessment reports.
+An AI-powered technical interview platform that simulates real coding interviews, evaluates candidate performance, and generates detailed assessment reports. [Live Deployed Website: https://interviewai-nine-theta.vercel.app/]
 
 ## Features
 
