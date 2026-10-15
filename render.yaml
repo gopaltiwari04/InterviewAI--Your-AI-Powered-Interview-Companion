@@ -1,0 +1,27 @@
+# Render Blueprint for the Socket.IO server (apps/ws-server).
+# The web app is deployed on Vercel; apps/code-executor needs a host with Docker
+# and is NOT deployed here (see DEPLOYMENT.md).
+services:
+  - type: web
+    name: interviewai-ws
+    runtime: node
+    plan: free
+    buildCommand: npm install -g pnpm@9.0.0 && pnpm install --frozen-lockfile --prod=false --filter ws-server... && pnpm --filter ws-server run build
+    startCommand: node apps/ws-server/dist/index.js
+    healthCheckPath: /health
+    buildFilter:
+      paths:
+        - apps/ws-server/**
+        - pnpm-lock.yaml
+        - render.yaml
+    envVars:
+      - key: NODE_VERSION
+        value: 22.14.0
+      - key: NODE_ENV
+        value: production
+      # Comma-separated list of allowed browser origins, no trailing slash.
+      - key: CLIENT_URL
+        value: https://interviewai-nine-theta.vercel.app
+      # Secret: entered in the Render dashboard, never committed.
+      - key: REDIS_URL
+        sync: false

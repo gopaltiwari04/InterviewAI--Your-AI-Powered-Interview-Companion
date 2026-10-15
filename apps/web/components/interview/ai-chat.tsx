@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 
 // Lightweight local replacement for @ai-sdk/react's useChat to avoid module resolution errors.
 function useChat(opts: { api: string; body?: any }) {
-  const [messages, setMessages] = useState<Array<{ id: string; role: 'user' | 'assistant' | 'system'; content: string }>>([]);
+  // isError marks local error bubbles, which are shown but never sent back to the model.
+  const [messages, setMessages] = useState<Array<{ id: string; role: 'user' | 'assistant' | 'system'; content: string; isError?: boolean }>>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -20,7 +21,7 @@ function useChat(opts: { api: string; body?: any }) {
       const userMessage = { id: String(Date.now()) + '-u', role: 'user' as const, content: trimmed };
       
       // 1. Capture the updated messages array so we can send the full history to the backend
-      const updatedMessages = [...messages, userMessage];
+      const updatedMessages: typeof messages = [...messages, userMessage];
       setMessages(updatedMessages);
       setInput('');
       setIsLoading(true);
@@ -30,7 +31,10 @@ function useChat(opts: { api: string; body?: any }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           // 2. CRITICAL FIX: Send the 'messages' array, not just a single 'message' string
-          body: JSON.stringify({ ...opts.body, messages: updatedMessages }), 
+          body: JSON.stringify({
+            ...opts.body,
+            messages: updatedMessages.filter((m) => !m.isError).map(({ role, content }) => ({ role, content })),
+          }),
         });
         
         // Handle standard text responses (since Vercel AI SDK toDataStreamResponse might send raw text chunks)
@@ -45,10 +49,10 @@ function useChat(opts: { api: string; body?: any }) {
             // It's just a raw text string, which is fine!
         }
 
-        const aiMessage = { id: String(Date.now()) + '-a', role: 'assistant' as const, content: aiContent };
+        const aiMessage = { id: String(Date.now()) + '-a', role: 'assistant' as const, content: aiContent, isError: !res.ok };
         setMessages((m) => [...m, aiMessage]);
       } catch (err) {
-        const errMsg = { id: String(Date.now()) + '-e', role: 'assistant' as const, content: 'Error: failed to get response.' };
+        const errMsg = { id: String(Date.now()) + '-e', role: 'assistant' as const, content: 'Error: failed to get response.', isError: true };
         setMessages((m) => [...m, errMsg]);
       } finally {
         setIsLoading(false);

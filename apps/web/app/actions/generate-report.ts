@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@repo/database";
-import { google } from "@ai-sdk/google";
+import { interviewModel } from "@/lib/ai";
 import { generateObject, jsonSchema } from 'ai';
 // Avoid requiring 'zod' at runtime; use a plain JSON Schema compatible with generateObject
 const reportSchema = {
@@ -35,7 +35,7 @@ export async function generateReport(roomId: string) {
 
   // 3. Force Gemini to output a strict JSON structure matching our Prisma model
   const { object } = await generateObject({
-    model: google("gemini-2.5-flash"), // You can swap to gemini-1.5-flash if you prefer
+    model: interviewModel(), // Set GEMINI_MODEL to change it
     // Use JSON schema to avoid zod dependency
     schema: jsonSchema(reportSchema as any), 
     prompt: `

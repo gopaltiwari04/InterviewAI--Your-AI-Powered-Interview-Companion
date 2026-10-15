@@ -6,27 +6,26 @@ import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
 import dotenv from "dotenv";
+import { describeRedis, getRedisUrl, redisOptionsFromUrl } from "./redis.js";
 
 dotenv.config();
 
 const execAsync = promisify(exec);
 
 // --- Configuration ---
-const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+const REDIS_URL = getRedisUrl();
 const QUEUE_NAME = "code-execution-queue";
 const EXECUTION_TIMEOUT_MS = 5000; // 5 seconds max execution time
+// Read by apps/ws-server to tell users when no worker is running.
+const HEARTBEAT_KEY = "code-executor:heartbeat";
+const HEARTBEAT_INTERVAL_MS = 30_000;
+const HEARTBEAT_TTL_SECONDS = 90;
 
 // Redis clients: One for BullMQ, one for publishing results back to the WS server
-const redisUrl = new URL(REDIS_URL);
-const connection = {
-  host: redisUrl.hostname,
-  port: redisUrl.port ? Number(redisUrl.port) : 6379,
-  username: redisUrl.username || undefined,
-  password: redisUrl.password || undefined,
-  db: redisUrl.pathname && redisUrl.pathname !== "/" ? Number(redisUrl.pathname.slice(1)) : undefined,
-  maxRetriesPerRequest: null,
-};
-const pubClient = new Redis(REDIS_URL);
+const connection = redisOptionsFromUrl(REDIS_URL);
+console.log(`[Executor] Using Redis at ${describeRedis(REDIS_URL)}`);
+const pubClient = new Redis(connection);
+pubClient.on("error", (err) => console.error(`[Redis] ${err.message}`));
 
 // --- Supported Languages Map ---
 // Maps a language string to its Docker image, file extension, and run command
@@ -144,6 +143,21 @@ async function executeCode(payload: ExecutionPayload): Promise<ExecutionResult> 
   }
 }
 
+// --- Startup checks ---
+// Every job runs inside `docker run`, so the host must have a working Docker daemon.
+execAsync("docker version", { timeout: 10_000 })
+  .then(() => console.log("[Executor] Docker daemon reachable."))
+  .catch(() =>
+    console.error("[Executor] Docker is NOT available on this host. Every code execution will fail until Docker is installed and running.")
+  );
+
+const sendHeartbeat = () =>
+  pubClient.set(HEARTBEAT_KEY, new Date().toISOString(), "EX", HEARTBEAT_TTL_SECONDS).catch((err) =>
+    console.error(`[Executor] Heartbeat failed: ${err.message}`)
+  );
+sendHeartbeat();
+const heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+
 // --- The Queue Worker ---
 console.log(`[Executor] Starting worker. Listening to queue: ${QUEUE_NAME}...`);
 
@@ -163,17 +177,30 @@ const worker = new Worker(
 
     return result;
   },
-  { connection }
+  {
+    connection,
+    // Long-poll for 30s instead of 5s while idle. Jobs are still picked up immediately,
+    // but an idle worker sends far fewer commands (Upstash bills per command).
+    drainDelay: 30,
+  }
 );
 
 worker.on("failed", (job, err) => {
   console.error(`[Executor] Job ${job?.id} failed with error:`, err.message);
 });
 
+worker.on("error", (err) => {
+  console.error(`[Executor] Worker error: ${err.message}`);
+});
+
 // Graceful shutdown
-process.on("SIGINT", async () => {
+const shutdown = async () => {
   console.log("[Executor] Shutting down gracefully...");
+  clearInterval(heartbeatTimer);
   await worker.close();
+  await pubClient.del(HEARTBEAT_KEY).catch(() => {});
   pubClient.quit();
   process.exit(0);
-});
+};
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);

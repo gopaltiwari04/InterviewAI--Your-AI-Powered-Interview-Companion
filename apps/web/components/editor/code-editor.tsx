@@ -17,10 +17,21 @@ export function CodeEditor({ roomId, code, onCodeChange }: CodeEditorProps) {
   const [isRunning, setIsRunning] = useState(false);
   const [language, setLanguage] = useState("javascript");
 
+  const runTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearRunTimeout = () => {
+    if (runTimeout.current) clearTimeout(runTimeout.current);
+    runTimeout.current = null;
+  };
+
   useEffect(() => {
     if (!socket) return;
 
-    socket.emit("join-room", roomId);
+    // Join now, and again after every reconnect: the server forgets room
+    // membership when the connection drops (e.g. while Render wakes up).
+    const joinRoom = () => socket.emit("join-room", roomId);
+    joinRoom();
+    socket.on("connect", joinRoom);
 
     socket.on("code-update", (newCode: string) => {
       isRemoteChange.current = true;
@@ -28,6 +39,7 @@ export function CodeEditor({ roomId, code, onCodeChange }: CodeEditorProps) {
     });
 
     socket.on("execution-result", (result: any) => {
+      clearRunTimeout();
       setIsRunning(false);
       setOutput(
         `Status: ${result.status}\nTime: ${result.executionTimeMs}ms\n\nOutput:\n${result.output}`
@@ -39,6 +51,8 @@ export function CodeEditor({ roomId, code, onCodeChange }: CodeEditorProps) {
     });
 
     return () => {
+      clearRunTimeout();
+      socket.off("connect", joinRoom);
       socket.off("code-update");
       socket.off("execution-result");
       socket.off("execution-queued");
@@ -58,7 +72,10 @@ export function CodeEditor({ roomId, code, onCodeChange }: CodeEditorProps) {
   };
 
   const handleRunCode = () => {
-    if (!socket) return;
+    if (!socket || !isConnected) {
+      setOutput("Not connected to the code server, so code cannot be run right now.");
+      return;
+    }
 
     setIsRunning(true);
     setOutput("Running...");
@@ -68,6 +85,12 @@ export function CodeEditor({ roomId, code, onCodeChange }: CodeEditorProps) {
       language,
       code,
     });
+
+    clearRunTimeout();
+    runTimeout.current = setTimeout(() => {
+      setIsRunning(false);
+      setOutput("No result received within 30 seconds. The code-execution worker may be offline or busy.");
+    }, 30_000);
   };
 
   return (

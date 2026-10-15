@@ -22,8 +22,18 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    // In production, this URL should be driven by an environment variable (e.g., process.env.NEXT_PUBLIC_WS_URL)
-    const socketInstance = ClientIO("http://localhost:8080", {
+    // NEXT_PUBLIC_WS_URL is inlined at build time, so changing it on Vercel needs a redeploy.
+    // Production example: https://interviewai-ws.onrender.com (https:// upgrades to wss://).
+    const wsUrl =
+      process.env.NEXT_PUBLIC_WS_URL ||
+      (process.env.NODE_ENV === "development" ? "http://localhost:8080" : "");
+
+    if (!wsUrl) {
+      console.error("[Socket] NEXT_PUBLIC_WS_URL is not set; real-time features are disabled.");
+      return;
+    }
+
+    const socketInstance = ClientIO(wsUrl, {
       withCredentials: true,
       transports: ["websocket"], // Force WebSockets over HTTP long-polling
     });
@@ -34,6 +44,10 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
 
     socketInstance.on("disconnect", () => {
       setIsConnected(false);
+    });
+
+    socketInstance.on("connect_error", (err) => {
+      console.warn(`[Socket] Connection to ${wsUrl} failed: ${err.message}`);
     });
 
     setSocket(socketInstance);
