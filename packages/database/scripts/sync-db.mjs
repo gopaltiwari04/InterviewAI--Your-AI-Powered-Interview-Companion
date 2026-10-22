@@ -47,6 +47,15 @@ async function runRawSqlSync(db) {
     }
   }
 
+  const roomStatuses = ["CREATED", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
+  for (const val of roomStatuses) {
+    try {
+      await db.$executeRawUnsafe(`ALTER TYPE "InterviewRoomStatus" ADD VALUE IF NOT EXISTS '${val}';`);
+    } catch {
+      // ignore
+    }
+  }
+
   const eventTypes = ["STATE_CHANGED", "QUESTION_ASKED", "ANSWER_SUBMITTED", "FOLLOW_UP_ASKED"];
   for (const val of eventTypes) {
     try {
@@ -55,6 +64,7 @@ async function runRawSqlSync(db) {
       // ignore
     }
   }
+
 
   const stmts = [
     `CREATE TABLE IF NOT EXISTS "User" (
@@ -289,7 +299,14 @@ async function runRawSqlSync(db) {
       ADD COLUMN IF NOT EXISTS "aiFeedback" TEXT NOT NULL DEFAULT '',
       ADD COLUMN IF NOT EXISTS "strengths" TEXT[] DEFAULT ARRAY[]::TEXT[],
       ADD COLUMN IF NOT EXISTS "weaknesses" TEXT[] DEFAULT ARRAY[]::TEXT[];`,
+    `ALTER TABLE "InterviewReport"
+      ALTER COLUMN "techScore" DROP NOT NULL,
+      ALTER COLUMN "commScore" DROP NOT NULL,
+      ALTER COLUMN "overallScore" DROP NOT NULL;`,
+    `UPDATE "InterviewRoom" SET "status" = 'IN_PROGRESS' WHERE "status"::text = 'ACTIVE';`,
+    `ALTER TABLE "InterviewRoom" ALTER COLUMN "status" SET DEFAULT 'CREATED';`,
     `CREATE UNIQUE INDEX IF NOT EXISTS "InterviewQuestion_roomId_position_key" ON "InterviewQuestion"("roomId", "position");`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "InterviewRoom_inviteTokenHash_key" ON "InterviewRoom"("inviteTokenHash");`,
     `CREATE UNIQUE INDEX IF NOT EXISTS "Submission_userId_idempotencyKey_key" ON "Submission"("userId", "idempotencyKey");`,
     `CREATE UNIQUE INDEX IF NOT EXISTS "ProctoringEvent_roomId_clientEventId_key" ON "ProctoringEvent"("roomId", "clientEventId");`,
     `CREATE INDEX IF NOT EXISTS "InterviewRoom_userId_createdAt_idx" ON "InterviewRoom"("userId", "createdAt");`,

@@ -52,6 +52,14 @@ export async function migrateRuntime(db: PrismaClient): Promise<{ success: boole
   }
 
   // Standalone enum updates for existing installations
+  const roomStatuses = ["CREATED", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
+  for (const val of roomStatuses) {
+    await execute(
+      `ALTER TYPE "InterviewRoomStatus" ADD VALUE IF NOT EXISTS '${val}';`,
+      `InterviewRoomStatus value ${val}`
+    );
+  }
+
   const eventTypes = ["STATE_CHANGED", "QUESTION_ASKED", "ANSWER_SUBMITTED", "FOLLOW_UP_ASKED"];
   for (const val of eventTypes) {
     await execute(
@@ -367,8 +375,29 @@ export async function migrateRuntime(db: PrismaClient): Promise<{ success: boole
     `Alter InterviewReport columns`
   );
 
+  // Relax legacy NOT NULL score columns on InterviewReport and ensure status default on InterviewRoom
+  await execute(
+    `ALTER TABLE "InterviewReport"
+      ALTER COLUMN "techScore" DROP NOT NULL,
+      ALTER COLUMN "commScore" DROP NOT NULL,
+      ALTER COLUMN "overallScore" DROP NOT NULL;`,
+    `Relax InterviewReport score NOT NULL constraints`
+  );
+
+  await execute(
+    `UPDATE "InterviewRoom" SET "status" = 'IN_PROGRESS' WHERE "status"::text = 'ACTIVE';`,
+    `Update legacy ACTIVE room status to IN_PROGRESS`
+  );
+
+  await execute(
+    `ALTER TABLE "InterviewRoom" ALTER COLUMN "status" SET DEFAULT 'CREATED';`,
+    `Set InterviewRoom status default CREATED`
+  );
+
+
   // 5. Constraints and Key Indexes
   await execute(`CREATE UNIQUE INDEX IF NOT EXISTS "InterviewQuestion_roomId_position_key" ON "InterviewQuestion"("roomId", "position");`, `Constraint InterviewQuestion roomId position`);
+  await execute(`CREATE UNIQUE INDEX IF NOT EXISTS "InterviewRoom_inviteTokenHash_key" ON "InterviewRoom"("inviteTokenHash");`, `Constraint InterviewRoom inviteTokenHash`);
   await execute(`CREATE UNIQUE INDEX IF NOT EXISTS "Submission_userId_idempotencyKey_key" ON "Submission"("userId", "idempotencyKey");`, `Constraint Submission userId idempotency`);
   await execute(`CREATE UNIQUE INDEX IF NOT EXISTS "ProctoringEvent_roomId_clientEventId_key" ON "ProctoringEvent"("roomId", "clientEventId");`, `Constraint ProctoringEvent clientEventId`);
 
