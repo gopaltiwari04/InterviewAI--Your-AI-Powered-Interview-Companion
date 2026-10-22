@@ -5,6 +5,7 @@
 export { getEnv, resetEnvCache } from "./env";
 export { AppError, badRequest, forbidden, notFound, unauthorized } from "./errors";
 export { db, getRedis, logger } from "./infra";
+export { migrateRuntime } from "@repo/database";
 export { enforceRateLimit, RATE_LIMITS } from "./rate-limit";
 export { issueRealtimeToken, broadcast } from "./realtime";
 export { executorStatus, evaluationWorkerStatus, queueMetrics } from "./queues";

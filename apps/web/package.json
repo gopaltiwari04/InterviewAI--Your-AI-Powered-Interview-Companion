@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev --port 3000",
     "prebuild": "node ../../packages/database/scripts/sync-db.mjs",
-    "build": "next build",
+    "build": "node ../../packages/database/scripts/sync-db.mjs && next build",
     "start": "next start",
     "lint": "eslint --max-warnings 0",
     "check-types": "next typegen && tsc --noEmit",

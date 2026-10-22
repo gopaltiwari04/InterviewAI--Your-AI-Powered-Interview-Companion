@@ -15,3 +15,5 @@ if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db;
 // Explicit value exports (bundlers cannot statically analyse `export *` from CommonJS).
 export { Prisma, PrismaClient } from '@prisma/client';
 export type * from '@prisma/client';
+export { migrateRuntime } from './migrate-runtime';
+

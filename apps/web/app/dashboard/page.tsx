@@ -9,7 +9,7 @@ import { difficultyTone } from "@/components/interview/question-panel";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { dashboardStats, interviewHistory } from "@/lib/server/engine";
+import { dashboardStats, db, interviewHistory, migrateRuntime } from "@/lib/server/engine";
 import { AlertCircle } from "lucide-react";
 
 export const metadata: Metadata = { title: "Dashboard" };
@@ -52,9 +52,22 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     stats = loadedStats;
     history = loadedHistory;
   } catch (err) {
-    console.error("Dashboard database query error:", err);
-    dbNotice = err instanceof Error ? err.message : "Database synchronization in progress";
+    console.error("Dashboard database query error, running runtime migration auto-heal...", err);
+    try {
+      await migrateRuntime(db);
+      const [retryStats, retryHistory] = await Promise.all([
+        dashboardStats(actor),
+        interviewHistory(actor, page, 10),
+      ]);
+      stats = retryStats;
+      history = retryHistory;
+      dbNotice = null;
+    } catch (retryErr) {
+      console.error("Dashboard retry failed after migration auto-heal:", retryErr);
+      dbNotice = retryErr instanceof Error ? retryErr.message : "Database synchronization in progress";
+    }
   }
+
 
   const pages = Math.max(1, Math.ceil(history.total / (history.pageSize || 10)));
   const acceptance = stats.totals.codingSubmissions ? Math.round((stats.totals.acceptedSubmissions / stats.totals.codingSubmissions) * 100) : null;
