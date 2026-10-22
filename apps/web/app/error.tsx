@@ -35,6 +35,12 @@ export default function ErrorPage({
           </p>
         )}
 
+        {error?.message && error.message !== "An error occurred in the Server Components render. The specific message is omitted in production builds to avoid leaking sensitive details. A digest was provided to find the error in the server logs." && (
+          <div className="mt-3 p-2.5 rounded-lg bg-rose-50 border border-rose-100 text-left font-mono text-[11px] text-rose-700 break-words max-h-36 overflow-y-auto">
+            {error.message}
+          </div>
+        )}
+
         <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
           <button
             onClick={() => reset()}

@@ -6,7 +6,8 @@ import {
   MotivationalQuotes,
   TypewriterHeader,
 } from "@/components/login/login-interactive";
-import { Sparkles } from "lucide-react";
+import { Sparkles, AlertCircle, UserCheck } from "lucide-react";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = { title: "Sign in" };
 
@@ -21,7 +22,9 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const redirectTo = safeCallback((await searchParams).callbackUrl);
+  const params = await searchParams;
+  const redirectTo = safeCallback(params.callbackUrl);
+  const errorParam = typeof params.error === "string" ? params.error : Array.isArray(params.error) ? params.error[0] : null;
 
   return (
     <main
@@ -134,18 +137,42 @@ export default async function LoginPage({
 
         {/* Login Card */}
         <div className="relative z-10 mt-6 sm:mx-auto sm:w-full sm:max-w-md">
-          <div className="bg-white/85 backdrop-blur-xl py-8 px-4 shadow-2xl border border-white/80 rounded-2xl sm:px-10">
+          <div className="bg-white/90 backdrop-blur-xl py-8 px-4 shadow-2xl border border-white/80 rounded-2xl sm:px-10">
+            
+            {/* Optional Error Alert */}
+            {errorParam && (
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/90 p-3 text-xs text-amber-800 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold">Sign in notice: </span>
+                  <span>{errorParam.replace(/([A-Z])/g, " $1").trim()}</span>
+                  <div className="mt-1 text-[11px] text-amber-700">
+                    You can sign in instantly using the 1-Click Demo Candidate option below.
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-4">
               {/* Google Sign In Form */}
               <form
                 action={async () => {
                   "use server";
-                  await signIn("google", { redirectTo });
+                  try {
+                    await signIn("google", { redirectTo });
+                  } catch (err) {
+                    const digest = (err as { digest?: string })?.digest;
+                    if (digest?.startsWith("NEXT_REDIRECT")) {
+                      throw err;
+                    }
+                    console.error("Google sign in error:", err);
+                    redirect(`/login?error=GoogleAuthUnavailable&callbackUrl=${encodeURIComponent(redirectTo)}`);
+                  }
                 }}
               >
                 <button
                   type="submit"
-                  className="w-full flex justify-center items-center py-3 px-4 border border-slate-300 rounded-lg shadow-sm bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors cursor-pointer"
+                  className="w-full flex justify-center items-center py-3 px-4 border border-slate-300 rounded-lg shadow-xs bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors cursor-pointer"
                 >
                   <svg
                     className="w-5 h-5 mr-2"
@@ -178,12 +205,21 @@ export default async function LoginPage({
               <form
                 action={async () => {
                   "use server";
-                  await signIn("github", { redirectTo });
+                  try {
+                    await signIn("github", { redirectTo });
+                  } catch (err) {
+                    const digest = (err as { digest?: string })?.digest;
+                    if (digest?.startsWith("NEXT_REDIRECT")) {
+                      throw err;
+                    }
+                    console.error("GitHub sign in error:", err);
+                    redirect(`/login?error=GitHubAuthUnavailable&callbackUrl=${encodeURIComponent(redirectTo)}`);
+                  }
                 }}
               >
                 <button
                   type="submit"
-                  className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-sm bg-slate-900 text-sm font-semibold text-white hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900 transition-colors cursor-pointer"
+                  className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-xs bg-slate-900 text-sm font-semibold text-white hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900 transition-colors cursor-pointer"
                 >
                   <svg
                     className="w-5 h-5 mr-2"
@@ -201,33 +237,47 @@ export default async function LoginPage({
                 </button>
               </form>
 
+              {/* 1-Click Demo Candidate Login */}
               {testLoginEnabled && (
-                <form
-                  className="flex gap-2 border-t pt-4"
-                  action={async (formData: FormData) => {
-                    "use server";
-                    await signIn("test-login", {
-                      name: String(formData.get("name") ?? ""),
-                      redirectTo,
-                    });
-                  }}
-                >
-                  <label htmlFor="test-name" className="sr-only">
-                    Test user name
-                  </label>
-                  <input
-                    id="test-name"
-                    name="name"
-                    defaultValue="Test Candidate"
-                    className="flex-1 rounded-lg border px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <button
-                    type="submit"
-                    className="rounded-lg bg-amber-500 hover:bg-amber-600 px-3 py-2 text-sm font-semibold text-white transition-colors cursor-pointer"
+                <div className="pt-2">
+                  <div className="relative my-4">
+                    <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                      <div className="w-full border-t border-slate-200" />
+                    </div>
+                    <div className="relative flex justify-center text-xs">
+                      <span className="px-2 bg-white text-slate-400 font-medium">Or quick demo access</span>
+                    </div>
+                  </div>
+
+                  <form
+                    action={async (formData: FormData) => {
+                      "use server";
+                      try {
+                        const name = String(formData.get("name") || "Demo Candidate");
+                        await signIn("test-login", {
+                          name,
+                          redirectTo,
+                        });
+                      } catch (err) {
+                        const digest = (err as { digest?: string })?.digest;
+                        if (digest?.startsWith("NEXT_REDIRECT")) {
+                          throw err;
+                        }
+                        console.error("Demo login error:", err);
+                        redirect(`/login?error=DemoLoginFailed&callbackUrl=${encodeURIComponent(redirectTo)}`);
+                      }
+                    }}
                   >
-                    Test login (dev only)
-                  </button>
-                </form>
+                    <input type="hidden" name="name" value="Demo Candidate" />
+                    <button
+                      type="submit"
+                      className="w-full flex justify-center items-center gap-2 py-2.5 px-4 rounded-lg bg-indigo-50 border border-indigo-200 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 transition-colors shadow-2xs cursor-pointer"
+                    >
+                      <UserCheck className="w-4 h-4 text-indigo-600" />
+                      Continue as Demo Candidate (1-Click)
+                    </button>
+                  </form>
+                </div>
               )}
             </div>
 
