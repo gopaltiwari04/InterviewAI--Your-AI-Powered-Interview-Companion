@@ -415,5 +415,36 @@ export async function migrateRuntime(db: PrismaClient): Promise<{ success: boole
   await execute(`CREATE INDEX IF NOT EXISTS "ProctoringEvent_roomId_startedAt_idx" ON "ProctoringEvent"("roomId", "startedAt");`, `Index ProctoringEvent room`);
   await execute(`CREATE INDEX IF NOT EXISTS "ResumeProfile_userId_createdAt_idx" ON "ResumeProfile"("userId", "createdAt");`, `Index ResumeProfile user`);
 
+  // 6. User unification: ensure Gopal / ZEUS account retains all interview history across OAuth logins
+  await execute(
+    `DO $$
+    DECLARE
+      target_id TEXT;
+      other_user RECORD;
+    BEGIN
+      SELECT id INTO target_id FROM "User" WHERE email = 'tiwarigopal94@gmail.com' OR name = 'ZEUS' ORDER BY "createdAt" ASC LIMIT 1;
+      
+      IF target_id IS NOT NULL THEN
+        UPDATE "User" SET name = 'ZEUS' WHERE id = target_id;
+
+        FOR other_user IN
+          SELECT id FROM "User" WHERE (name ILIKE '%gopaltiwari%' OR email ILIKE '%gopaltiwari%' OR email ILIKE '%tiwarigopal%') AND id != target_id
+        LOOP
+          UPDATE "InterviewRoom" SET "userId" = target_id WHERE "userId" = other_user.id;
+          UPDATE "Submission" SET "userId" = target_id WHERE "userId" = other_user.id;
+          UPDATE "InterviewEvent" SET "userId" = target_id WHERE "userId" = other_user.id;
+          UPDATE "InterviewParticipant" SET "userId" = target_id WHERE "userId" = other_user.id;
+          UPDATE "Account" SET "userId" = target_id WHERE "userId" = other_user.id;
+          UPDATE "Session" SET "userId" = target_id WHERE "userId" = other_user.id;
+          DELETE FROM "User" WHERE id = other_user.id;
+        END LOOP;
+      ELSE
+        UPDATE "User" SET name = 'ZEUS' WHERE name ILIKE '%gopaltiwari%' OR email ILIKE '%tiwarigopal%';
+      END IF;
+    END $$;`,
+    `Unify candidate ZEUS account across OAuth providers`
+  );
+
   return { success: true, log };
+
 }

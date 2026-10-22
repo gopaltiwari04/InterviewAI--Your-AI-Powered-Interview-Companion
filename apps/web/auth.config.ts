@@ -39,6 +39,7 @@ if (githubClientId && githubClientSecret) {
     GitHub({
       clientId: githubClientId,
       clientSecret: githubClientSecret,
+      allowDangerousEmailAccountLinking: true,
     }),
   )
 }
@@ -48,9 +49,11 @@ if (googleClientId && googleClientSecret) {
     Google({
       clientId: googleClientId,
       clientSecret: googleClientSecret,
+      allowDangerousEmailAccountLinking: true,
     }),
   )
 }
+
 
 if (testLoginEnabled) {
   providers.push(
@@ -91,13 +94,20 @@ const authConfig: NextAuthConfig = {
   callbacks: {
     async jwt({ token, user }) {
       if (user?.id) token.id = user.id
+      if (token.name?.toLowerCase().includes("gopaltiwari") || token.email?.toLowerCase().includes("tiwarigopal")) {
+        token.name = "ZEUS"
+      }
       return token
     },
     async session({ session, token }) {
-      if (session.user && typeof token.id === "string") session.user.id = token.id
+      if (session.user) {
+        if (typeof token.id === "string") session.user.id = token.id
+        if (typeof token.name === "string") session.user.name = token.name
+      }
       return session
     },
   },
+
 }
 
 export default authConfig

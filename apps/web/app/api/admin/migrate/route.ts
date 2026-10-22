@@ -22,10 +22,27 @@ export async function GET() {
       };
     }
 
+    const users = await db.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        _count: { select: { rooms: true } },
+      },
+    });
+
+    const envDiag = {
+      hasGeminiKey: !!process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+      aiProvider: process.env.AI_PROVIDER ?? "default (gemini)",
+      hasRedis: !!process.env.REDIS_URL,
+    };
+
     return NextResponse.json({
       status: verification.success ? "ok" : "warning",
       message: "Runtime database schema synchronization executed successfully",
       verification,
+      envDiag,
+      users,
       result,
     });
   } catch (error) {

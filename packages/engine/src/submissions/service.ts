@@ -17,6 +17,7 @@ import { enqueueExecution, executorStatus, lookupExecution } from "../queues";
 import { RATE_LIMITS, enforceRateLimit } from "../rate-limit";
 import { broadcast } from "../realtime";
 import { isPastDeadline } from "@repo/core/interview";
+import { runFallbackJudge } from "./fallback-judge";
 
 const createSchema = z.object({
   questionId: z.string().min(1).max(64),
@@ -69,9 +70,6 @@ export async function createSubmission(roomId: string, actor: Actor, input: unkn
   const active = await db.submission.count({ where: { userId: actor.userId, status: { in: ["QUEUED", "RUNNING"] }, createdAt: { gt: new Date(Date.now() - LOST_JOB_MS) } } });
   if (active >= MAX_ACTIVE_PER_USER) throw rateLimited(5);
 
-  const executor = await executorStatus();
-  if (!executor.online) throw unavailable("The code judge is offline right now, so code cannot be run. Your code is saved; please try again shortly.");
-
   const problem = await resolveProblem(question);
   if (!problem) throw unavailable("The problem for this question could not be loaded.");
   const tests =
@@ -108,27 +106,78 @@ export async function createSubmission(roomId: string, actor: Actor, input: unkn
     data: { roomId, questionId: question.id, userId: actor.userId, eventType: "CODE_EXECUTION", payload: { submissionId: submission.id, kind: req.kind, language: req.language } },
   });
 
-  try {
-    await enqueueExecution({
-      submissionId: submission.id,
-      roomId,
-      kind: req.kind,
-      language: req.language,
-      files: assembleProgram(req.language, problem.signature, req.code),
-      returns: problem.signature.returns,
-      comparator: problem.comparator,
-      tests,
-      limits: { timeMsPerTest: problem.timeLimitMs, ...DEFAULT_LIMITS },
-    });
-  } catch (err) {
-    logger.error("enqueue failed", { submissionId: submission.id, error: (err as Error).message });
-    submission = await db.submission.update({
-      where: { id: submission.id },
-      data: { status: "FAILED", verdict: "INTERNAL_ERROR", error: "The code could not be queued. Please try again.", completedAt: new Date() },
-    });
+  const job = {
+    submissionId: submission.id,
+    roomId,
+    kind: req.kind,
+    language: req.language,
+    files: assembleProgram(req.language, problem.signature, req.code),
+    returns: problem.signature.returns,
+    comparator: problem.comparator,
+    tests,
+    limits: { timeMsPerTest: problem.timeLimitMs, ...DEFAULT_LIMITS },
+  };
+
+  const executor = await executorStatus();
+  if (executor.online) {
+    try {
+      await enqueueExecution(job);
+    } catch (err) {
+      logger.warn("enqueue failed, running fallback judge", { submissionId: submission.id, error: (err as Error).message });
+      try {
+        const result = await runFallbackJudge(job);
+        submission = await db.submission.update({
+          where: { id: submission.id },
+          data: {
+            status: "COMPLETED",
+            verdict: result.verdict,
+            passedCount: result.passed,
+            totalCount: result.total,
+            compileOutput: result.compileOutput,
+            results: sanitize(result) as unknown as Prisma.InputJsonValue,
+            executionTimeMs: result.executionTimeMs,
+            judgeVersion: result.judgeVersion,
+            completedAt: new Date(),
+          },
+        });
+      } catch (fallbackErr) {
+        logger.error("fallback judge error", { error: (fallbackErr as Error).message });
+        submission = await db.submission.update({
+          where: { id: submission.id },
+          data: { status: "FAILED", verdict: "INTERNAL_ERROR", error: "The code could not be evaluated. Please try again.", completedAt: new Date() },
+        });
+      }
+    }
+  } else {
+    // Background worker is offline: run fallback judge immediately!
+    try {
+      const result = await runFallbackJudge(job);
+      submission = await db.submission.update({
+        where: { id: submission.id },
+        data: {
+          status: "COMPLETED",
+          verdict: result.verdict,
+          passedCount: result.passed,
+          totalCount: result.total,
+          compileOutput: result.compileOutput,
+          results: sanitize(result) as unknown as Prisma.InputJsonValue,
+          executionTimeMs: result.executionTimeMs,
+          judgeVersion: result.judgeVersion,
+          completedAt: new Date(),
+        },
+      });
+    } catch (fallbackErr) {
+      logger.error("fallback judge error", { error: (fallbackErr as Error).message });
+      submission = await db.submission.update({
+        where: { id: submission.id },
+        data: { status: "FAILED", verdict: "INTERNAL_ERROR", error: "The code could not be evaluated. Please try again.", completedAt: new Date() },
+      });
+    }
   }
+
   await broadcast(roomId, { type: "submission", version: room.version, submissionId: submission.id, questionId: question.id, status: submission.status, verdict: submission.verdict });
   return toClientSubmission(submission);
+
 }
 
 function sanitize(result: ExecutionResult): StoredTest[] {

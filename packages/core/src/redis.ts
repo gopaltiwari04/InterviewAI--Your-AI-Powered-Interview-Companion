@@ -22,11 +22,11 @@ export interface RedisConnectionOptions {
 
 export function getRedisUrl(env: Record<string, string | undefined> = process.env): string {
   const url = env.REDIS_URL;
-  if (url) return url;
+  if (url) return url.replace("localhost", "127.0.0.1");
   if (env.NODE_ENV === "production") {
     throw new Error("REDIS_URL is not set. Add it to the service environment variables.");
   }
-  return "redis://localhost:6379";
+  return "redis://127.0.0.1:6379";
 }
 
 export function redisOptionsFromUrl(redisUrl: string): RedisConnectionOptions {
@@ -35,8 +35,9 @@ export function redisOptionsFromUrl(redisUrl: string): RedisConnectionOptions {
     throw new Error("REDIS_URL must start with redis:// or rediss://");
   }
   const db = url.pathname && url.pathname !== "/" ? Number(url.pathname.slice(1)) : undefined;
+  const host = url.hostname === "localhost" ? "127.0.0.1" : url.hostname;
   return {
-    host: url.hostname,
+    host,
     port: url.port ? Number(url.port) : 6379,
     username: url.username ? decodeURIComponent(url.username) : undefined,
     password: url.password ? decodeURIComponent(url.password) : undefined,
@@ -49,6 +50,7 @@ export function redisOptionsFromUrl(redisUrl: string): RedisConnectionOptions {
     retryStrategy: (times: number) => Math.min(30_000, 200 * 2 ** Math.min(times, 8)),
   };
 }
+
 
 /** Masked host and TLS flag only, safe to log. Never log the full URL. */
 export function describeRedis(redisUrl: string): string {
