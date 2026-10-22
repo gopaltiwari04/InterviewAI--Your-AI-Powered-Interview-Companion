@@ -11,19 +11,26 @@ export const dynamic = "force-dynamic";
 export default async function ResumePage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login?callbackUrl=/resume");
-  const resumes = await listResumes({ userId: session.user.id });
-  const views: ResumeView[] = resumes.map((r) => ({
-    id: r.id,
-    fileName: r.fileName,
-    status: r.status,
-    summary: r.summary ?? "",
-    skills: r.skills,
-    projects: (r.projects as ResumeView["projects"]) ?? [],
-    experience: (r.experience as ResumeView["experience"]) ?? [],
-    confirmed: Boolean(r.confirmedAt),
-    notice: r.error,
-    createdAt: r.createdAt.toISOString(),
-  }));
+
+  let views: ResumeView[] = [];
+  try {
+    const resumes = await listResumes({ userId: session.user.id });
+    views = (resumes || []).map((r) => ({
+      id: r.id,
+      fileName: r.fileName,
+      status: r.status,
+      summary: r.summary ?? "",
+      skills: r.skills,
+      projects: (r.projects as ResumeView["projects"]) ?? [],
+      experience: (r.experience as ResumeView["experience"]) ?? [],
+      confirmed: Boolean(r.confirmedAt),
+      notice: r.error,
+      createdAt: r.createdAt.toISOString(),
+    }));
+  } catch (err) {
+    console.error("Failed to list resumes:", err);
+  }
+
   return (
     <>
       <AppHeader />

@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3000",
+    "prebuild": "node ../../packages/database/scripts/sync-db.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint --max-warnings 0",

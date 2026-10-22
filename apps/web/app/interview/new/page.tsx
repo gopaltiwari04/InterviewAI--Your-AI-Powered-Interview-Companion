@@ -7,6 +7,7 @@ import { listResumes } from "@/lib/server/engine";
 import { getPublicProblem } from "@/lib/server/problems";
 
 export const metadata: Metadata = { title: "New interview" };
+export const dynamic = "force-dynamic";
 
 export default async function NewInterviewPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await auth();
@@ -14,7 +15,14 @@ export default async function NewInterviewPage({ searchParams }: { searchParams:
   const params = await searchParams;
   const slug = typeof params.problem === "string" ? params.problem : null;
   const practice = slug ? getPublicProblem(slug) : null;
-  const resumes = (await listResumes({ userId: session.user.id })).filter((r) => r.status === "READY" && r.confirmedAt);
+  
+  let resumes: Awaited<ReturnType<typeof listResumes>> = [];
+  try {
+    const fetched = await listResumes({ userId: session.user.id });
+    resumes = (fetched || []).filter((r) => r.status === "READY" && r.confirmedAt);
+  } catch (err) {
+    console.error("Failed to load user resumes:", err);
+  }
 
   return (
     <>

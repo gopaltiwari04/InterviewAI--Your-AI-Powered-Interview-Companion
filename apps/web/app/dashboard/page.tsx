@@ -10,6 +10,7 @@ import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { dashboardStats, interviewHistory } from "@/lib/server/engine";
+import { AlertCircle } from "lucide-react";
 
 export const metadata: Metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
@@ -31,14 +32,47 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   if (!session?.user?.id) redirect("/login");
   const actor = { userId: session.user.id, name: session.user.name };
   const page = Math.max(1, Number((await searchParams).page ?? 1) || 1);
-  const [stats, history] = await Promise.all([dashboardStats(actor), interviewHistory(actor, page, 10)]);
-  const pages = Math.max(1, Math.ceil(history.total / history.pageSize));
+
+  let stats = {
+    totals: { interviews: 0, completed: 0, codingSubmissions: 0, acceptedSubmissions: 0, averageScore: null as number | null },
+    trend: [] as { date: string; overall: number | null; technical: number | null; communication: number | null }[],
+    skills: [] as { key: string; label: string; average: number; samples: number }[],
+    topics: [] as { topic: string; label: string; attempted: number; averagePassRate: number }[],
+    weakTopics: [] as string[],
+    recommendations: [] as { slug: string; title: string; difficulty: string; topics: string[]; reason: string }[],
+  };
+  let history: Awaited<ReturnType<typeof interviewHistory>> = { rows: [], total: 0, page: 1, pageSize: 10 };
+  let dbNotice: string | null = null;
+
+  try {
+    const [loadedStats, loadedHistory] = await Promise.all([
+      dashboardStats(actor),
+      interviewHistory(actor, page, 10),
+    ]);
+    stats = loadedStats;
+    history = loadedHistory;
+  } catch (err) {
+    console.error("Dashboard database query error:", err);
+    dbNotice = err instanceof Error ? err.message : "Database synchronization in progress";
+  }
+
+  const pages = Math.max(1, Math.ceil(history.total / (history.pageSize || 10)));
   const acceptance = stats.totals.codingSubmissions ? Math.round((stats.totals.acceptedSubmissions / stats.totals.codingSubmissions) * 100) : null;
 
   return (
     <>
       <AppHeader />
       <main id="main" className="mx-auto max-w-6xl space-y-6 px-4 py-8">
+        {dbNotice && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800 flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold">Database Schema Notice: </span>
+              <span>Some analytics tables are synchronizing. You can still create and take practice interviews below.</span>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold">Hi {session.user.name?.split(" ")[0] ?? "there"}</h1>
