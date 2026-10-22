@@ -1,0 +1,29 @@
+# systemd unit for running the judge directly on a Docker host (recommended).
+# Installation steps: DEPLOYMENT.md, section "Code executor on a VM".
+[Unit]
+Description=InterviewAI code executor (sandboxed judge)
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=interviewai
+Group=docker
+WorkingDirectory=/opt/interviewai
+# Holds REDIS_URL and optional SANDBOX_* settings. chmod 600, owned by root.
+EnvironmentFile=/etc/interviewai/executor.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node --enable-source-maps apps/code-executor/dist/index.js
+Restart=always
+RestartSec=5
+# Gives in-flight jobs time to finish during deploys.
+TimeoutStopSec=90
+# Hardening for the worker process itself (sandboxes are separate containers).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/interviewai
+
+[Install]
+WantedBy=multi-user.target

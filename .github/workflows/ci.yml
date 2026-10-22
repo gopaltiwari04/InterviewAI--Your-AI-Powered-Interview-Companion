@@ -1,0 +1,188 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      harness:
+        description: "Also run the full multi-language harness suite (slow)"
+        type: boolean
+        default: false
+  schedule:
+    # Weekly full harness verification across all languages.
+    - cron: "0 3 * * 1"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 22.14.0
+  # Placeholder for `prisma generate` and builds; no job connects to it.
+  DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+  NEXT_TELEMETRY_DISABLED: 1
+
+jobs:
+  checks:
+    name: Lint, types, unit tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm check-types
+      - run: pnpm test
+      - name: Verify the problem bank (references agree, dataset up to date)
+        run: pnpm verify:problems
+        env:
+          PYTHON_BIN: python3
+      - run: pnpm build
+      - name: No server-only data in the client bundle
+        run: node scripts/check-client-bundle.mjs
+
+  integration:
+    name: Integration tests (PostgreSQL + Redis)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: interview_ai_test
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U admin" --health-interval 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://admin:password@localhost:5432/interview_ai_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply migrations to an empty database
+        run: pnpm --filter @repo/database migrate:deploy
+        env:
+          DATABASE_URL: postgresql://admin:password@localhost:5432/interview_ai_test
+      - name: Schema matches migrations (no drift)
+        working-directory: packages/database
+        run: npx prisma migrate diff --from-url "postgresql://admin:password@localhost:5432/interview_ai_test" --to-schema-datamodel prisma/schema.prisma --exit-code
+      - run: pnpm test:integration
+
+  judge:
+    name: Sandboxed judge (Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Judge security and verdict tests
+        working-directory: apps/code-executor
+        run: npx vitest run --config vitest.docker.config.ts test/docker/judge.test.ts
+      - name: Harness tests for every language and problem
+        if: github.event_name == 'schedule' || inputs.harness
+        working-directory: apps/code-executor
+        run: npx vitest run --config vitest.docker.config.ts test/docker/harness.test.ts
+
+  e2e:
+    name: Browser tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: [checks]
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: interview_ai_e2e_test
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U admin" --health-interval 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://admin:password@localhost:5432/interview_ai_e2e_test
+      REDIS_URL: redis://localhost:6379
+      REALTIME_JWT_SECRET: ci-only-realtime-secret-ci-only-realtime-secret
+      AUTH_SECRET: ci-only-auth-secret-ci-only-auth-secret-0000
+      AUTH_TRUST_HOST: "true"
+      AUTH_TEST_LOGIN: enabled
+      AI_PROVIDER: mock
+      CLIENT_URL: http://localhost:3000
+      NEXT_PUBLIC_WS_URL: http://localhost:8080
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @repo/database migrate:deploy
+      - name: Build the backend services
+        run: pnpm --filter ws-server --filter code-executor --filter worker build
+      - name: Start realtime server, judge and worker
+        run: |
+          node apps/ws-server/dist/index.js > ws.log 2>&1 &
+          node apps/code-executor/dist/index.js > executor.log 2>&1 &
+          node apps/worker/dist/index.js > worker.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf localhost:8090/ready && curl -sf localhost:8080/ready && break; sleep 5; done
+      - run: pnpm --filter web exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - name: Service logs
+        if: failure()
+        run: tail -n 200 ws.log executor.log worker.log
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7
+
+  security:
+    name: Dependency and secret scanning
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Known vulnerabilities in production dependencies (high and critical)
+        run: pnpm audit --prod --audit-level high
+      - name: No committed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,35 @@
+{
+  "name": "worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Background worker: AI interview evaluations, deadline expiry and recovery sweeps. Needs DATABASE_URL, REDIS_URL and the AI key; never runs candidate code.",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "node ../../scripts/bundle.mjs src/index.ts dist/index.js",
+    "start": "node --enable-source-maps dist/index.js",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^3.0.82",
+    "@prisma/client": "^5.22.0",
+    "ai": "^6.0.204",
+    "bullmq": "^5.78.0",
+    "dotenv": "^16.4.5",
+    "ioredis": "^5.4.1",
+    "unpdf": "^1.8.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@repo/core": "workspace:*",
+    "@repo/database": "workspace:*",
+    "@repo/engine": "workspace:*",
+    "@repo/eslint-config": "workspace:*",
+    "@repo/problem-bank": "workspace:*",
+    "@types/node": "^22.15.3",
+    "esbuild": "^0.25.12",
+    "eslint": "^9.39.1",
+    "tsx": "^4.22.4",
+    "typescript": "5.9.2"
+  }
+}

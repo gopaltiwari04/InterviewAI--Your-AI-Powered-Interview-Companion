@@ -1,0 +1,28 @@
+{
+  "name": "@repo/problem-bank",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "SERVER-ONLY curated DSA problem bank with hidden tests and reference solutions. Never import from client components.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build:dataset": "tsx scripts/build-dataset.ts",
+    "verify": "tsx scripts/build-dataset.ts --check",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@repo/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@types/node": "^22.15.3",
+    "eslint": "^9.39.1",
+    "tsx": "^4.22.4",
+    "typescript": "5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

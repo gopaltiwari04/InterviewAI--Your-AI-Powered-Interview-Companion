@@ -1,0 +1,33 @@
+{
+  "name": "@repo/core",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Client-safe shared domain logic: problem types, codecs, judge contracts, interview lifecycle, proctoring and evaluation schemas.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./problems": "./src/problems/index.ts",
+    "./judge": "./src/judge/index.ts",
+    "./interview": "./src/interview/index.ts",
+    "./proctoring": "./src/proctoring/index.ts",
+    "./evaluation": "./src/evaluation/index.ts",
+    "./realtime": "./src/realtime/index.ts",
+    "./observability": "./src/observability/index.ts",
+    "./redis": "./src/redis.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@types/node": "^22.15.3",
+    "eslint": "^9.39.1",
+    "typescript": "5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

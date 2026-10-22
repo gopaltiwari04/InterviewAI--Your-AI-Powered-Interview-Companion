@@ -1,17 +1,22 @@
 {
   "name": "@repo/database",
   "version": "1.0.0",
+  "private": true,
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-
   "scripts": {
-    "postinstall": "prisma generate --schema=./prisma/schema.prisma"
+    "postinstall": "prisma generate --schema=./prisma/schema.prisma",
+    "generate": "prisma generate --schema=./prisma/schema.prisma",
+    "migrate:dev": "prisma migrate dev --schema=./prisma/schema.prisma",
+    "migrate:deploy": "prisma migrate deploy --schema=./prisma/schema.prisma",
+    "migrate:status": "prisma migrate status --schema=./prisma/schema.prisma",
+    "baseline:check": "node scripts/baseline-check.mjs",
+    "baseline:resolve": "prisma migrate resolve --applied 0_init --schema=./prisma/schema.prisma",
+    "check-types": "tsc --noEmit"
   },
-
   "dependencies": {
     "@prisma/client": "^5.22.0"
   },
-
   "devDependencies": {
     "@types/node": "^22.15.3",
     "prisma": "^5.22.0",

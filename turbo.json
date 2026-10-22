@@ -1,10 +1,66 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": [
+    "NODE_ENV",
+    "LOG_LEVEL",
+    "DATABASE_URL",
+    "REDIS_URL",
+    "AUTH_SECRET",
+    "AUTH_URL",
+    "AUTH_TRUST_HOST",
+    "AUTH_GITHUB_ID",
+    "AUTH_GITHUB_SECRET",
+    "AUTH_GOOGLE_ID",
+    "AUTH_GOOGLE_SECRET",
+    "AUTH_TEST_LOGIN",
+    "REALTIME_JWT_SECRET",
+    "GOOGLE_GENERATIVE_AI_API_KEY",
+    "GEMINI_MODEL",
+    "GEMINI_FALLBACK_MODEL",
+    "AI_PROVIDER",
+    "AI_TIMEOUT_MS",
+    "EVALUATION_MODE",
+    "NEXT_PUBLIC_WS_URL",
+    "CLIENT_URL",
+    "PORT",
+    "PYTHON_BIN",
+    "TEST_DATABASE_URL",
+    "TEST_REDIS_URL",
+    "WORKER_CONCURRENCY",
+    "WORKER_HEALTH_PORT",
+    "DOCKER_BIN",
+    "SANDBOX_RUNTIME",
+    "SANDBOX_CPUS",
+    "SANDBOX_PIDS_LIMIT",
+    "SANDBOX_LIFETIME_SECONDS",
+    "SANDBOX_PREPULL",
+    "SANDBOX_IMAGE_PYTHON",
+    "SANDBOX_IMAGE_NODE",
+    "SANDBOX_IMAGE_GCC",
+    "SANDBOX_IMAGE_JAVA",
+    "EXECUTOR_CONCURRENCY",
+    "EXECUTOR_HEALTH_PORT",
+    "EXECUTOR_HEALTH_HOST",
+    "E2E_BASE_URL",
+    "CI",
+    "GEMINI_THINKING_BUDGET",
+    "RUN_LIVE_AI"
+  ],
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
-      "env": ["NEXT_PUBLIC_WS_URL"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**",
+        "dist/**"
+      ]
+    },
+    "check-types": {},
+    "lint": {},
+    "test": {
+      "outputs": []
     },
     "dev": {
       "cache": false,

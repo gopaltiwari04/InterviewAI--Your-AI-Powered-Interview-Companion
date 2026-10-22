@@ -38,3 +38,6 @@ yarn-error.log*
 *.pem
 
 apps/code-executor/tmp/
+
+# Load-test output and local scratch files
+load-test-results.json

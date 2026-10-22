@@ -1,0 +1,15 @@
+# Never send secrets, local dependencies or build output into an image build context.
+**/.env
+**/.env.*
+!**/.env.example
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/coverage
+**/playwright-report
+**/test-results
+apps/web/temp-app
+structure.txt
+tatus
+.git

@@ -1,16 +1,60 @@
-version: '3.8'
-
+# Local development infrastructure.
+#   docker compose up -d postgres redis      databases only (the usual development setup)
+#   docker compose --profile stack up -d     also the realtime server, judge and worker
+# The judge container drives the host Docker daemon through the socket mount;
+# see docs/SECURITY.md for why production should run the executor directly on a VM.
 services:
   postgres:
     image: postgres:15-alpine
     environment:
       POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: password # local development only
       POSTGRES_DB: interview_ai
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 5s
+      retries: 10
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  ws-server:
+    profiles: ["stack"]
+    build: { context: ., dockerfile: deploy/ws-server.Dockerfile }
+    environment:
+      REDIS_URL: redis://redis:6379
+      REALTIME_JWT_SECRET: local-dev-realtime-secret-local-dev-realtime-secret
+      CLIENT_URL: http://localhost:3000
+    ports: ["8080:8080"]
+    depends_on: { redis: { condition: service_healthy } }
+
+  code-executor:
+    profiles: ["stack"]
+    build: { context: ., dockerfile: deploy/code-executor/Dockerfile }
+    environment:
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports: ["8090:8090"]
+    depends_on: { redis: { condition: service_healthy } }
+
+  worker:
+    profiles: ["stack"]
+    build: { context: ., dockerfile: deploy/worker/Dockerfile }
+    environment:
+      DATABASE_URL: postgresql://admin:password@postgres:5432/interview_ai
+      REDIS_URL: redis://redis:6379
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY:-}
+    ports: ["8091:8091"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }

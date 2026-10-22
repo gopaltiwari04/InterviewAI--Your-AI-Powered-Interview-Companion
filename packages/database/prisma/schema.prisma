@@ -34,19 +34,22 @@ model Session {
 }
 
 model User {
-  id            String                 @id @default(cuid())
-  name          String?
-  email         String?                @unique
-  emailVerified DateTime?
-  image         String?
-  passwordHash  String?
-  role          Role                   @default(CANDIDATE)
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
-  accounts      Account[]
-  participants  InterviewParticipant[]
-  rooms         InterviewRoom[]        @relation("UserRooms")
-  sessions      Session[]
+  id               String                 @id @default(cuid())
+  name             String?
+  email            String?                @unique
+  emailVerified    DateTime?
+  image            String?
+  passwordHash     String?
+  role             Role                   @default(CANDIDATE)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  accounts         Account[]
+  participants     InterviewParticipant[]
+  rooms            InterviewRoom[]        @relation("UserRooms")
+  sessions         Session[]
+  submissions      Submission[]
+  proctoringEvents ProctoringEvent[]
+  resumeProfiles   ResumeProfile[]
 }
 
 model VerificationToken {
@@ -57,49 +60,231 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+/// One interview session. `status` follows CREATED -> IN_PROGRESS -> COMPLETED
+/// (or CANCELLED); transitions are guarded by `version` (optimistic locking).
 model InterviewRoom {
-  id           String                 @id @default(cuid())
-  status       InterviewRoomStatus    @default(ACTIVE)
-  createdAt    DateTime               @default(now())
-  updatedAt    DateTime               @updatedAt
-  userId       String
-  events       InterviewEvent[]
-  participants InterviewParticipant[]
-  report       InterviewReport?
-  user         User                   @relation("UserRooms", fields: [userId], references: [id], onDelete: Cascade)
+  id                  String                 @id @default(cuid())
+  status              InterviewRoomStatus    @default(CREATED)
+  mode                InterviewMode          @default(MIXED)
+  difficulty          Difficulty             @default(MEDIUM)
+  language            String                 @default("python")
+  topics              String[]               @default([])
+  durationMinutes     Int                    @default(45)
+  questionCount       Int                    @default(1)
+  adaptive            Boolean                @default(false)
+  useAiQuestions      Boolean                @default(false)
+  proctoringEnabled   Boolean                @default(false)
+  proctoringConsentAt DateTime?
+  resumeProfileId     String?
+  /// SHA-256 of the invite token an interviewer uses to join. The token itself is never stored.
+  inviteTokenHash     String?                @unique
+  startedAt           DateTime?
+  endsAt              DateTime?
+  completedAt         DateTime?
+  version             Int                    @default(0)
+  evaluationStatus    EvaluationStatus       @default(NOT_STARTED)
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  userId              String
+  events              InterviewEvent[]
+  participants        InterviewParticipant[]
+  report              InterviewReport?
+  questions           InterviewQuestion[]
+  submissions         Submission[]
+  proctoringEvents    ProctoringEvent[]
+  resumeProfile       ResumeProfile?         @relation(fields: [resumeProfileId], references: [id], onDelete: SetNull)
+  user                User                   @relation("UserRooms", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status, endsAt])
 }
 
 model InterviewParticipant {
-  id       String        @id @default(cuid())
+  id       String          @id @default(cuid())
   roomId   String
   userId   String
-  joinedAt DateTime      @default(now())
-  room     InterviewRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     ParticipantRole @default(CANDIDATE)
+  joinedAt DateTime        @default(now())
+  room     InterviewRoom   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([roomId, userId])
+  @@index([userId])
 }
 
+/// Timeline of an interview: chat messages, follow-ups and state changes.
 model InterviewEvent {
-  id        String             @id @default(cuid())
-  roomId    String
-  eventType InterviewEventType
-  payload   Json
-  timestamp DateTime           @default(now())
-  room      InterviewRoom      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  id         String             @id @default(cuid())
+  roomId     String
+  questionId String?
+  userId     String?
+  eventType  InterviewEventType
+  payload    Json
+  timestamp  DateTime           @default(now())
+  room       InterviewRoom      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  question   InterviewQuestion? @relation(fields: [questionId], references: [id], onDelete: SetNull)
+
+  @@index([roomId, timestamp])
 }
 
+/// A question asked during an interview. Coding questions reference a bank
+/// problem (problemSlug + problemVersion) or a validated GeneratedProblem.
+model InterviewQuestion {
+  id                 String            @id @default(cuid())
+  roomId             String
+  position           Int
+  kind               QuestionKind
+  source             QuestionSource
+  status             QuestionStatus    @default(ACTIVE)
+  problemSlug        String?
+  problemVersion     Int?
+  generatedProblemId String?
+  title              String
+  prompt             String            @db.Text
+  topic              String?
+  difficulty         Difficulty
+  /// Why this question was chosen (adaptive policy explanation), shown to the candidate.
+  selectionReason    String            @db.Text
+  /// Server-only rubric hints (expected key points / competencies). Never sent to the browser.
+  rubricHints        Json?
+  answer             String?           @db.Text
+  /// Coding questions: the candidate's approach, complexity analysis and edge cases.
+  explanation        Json?
+  draftCode          String?           @db.Text
+  draftLanguage      String?
+  askedAt            DateTime          @default(now())
+  answeredAt         DateTime?
+  room               InterviewRoom     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  generatedProblem   GeneratedProblem? @relation(fields: [generatedProblemId], references: [id], onDelete: SetNull)
+  submissions        Submission[]
+  events             InterviewEvent[]
+
+  @@unique([roomId, position])
+  @@index([problemSlug])
+}
+
+/// AI-generated coding problem that passed validation (reference solution run
+/// against its tests in the sandbox). Tests stay server-side.
+model GeneratedProblem {
+  id                String                 @id @default(cuid())
+  createdById       String?
+  status            GeneratedProblemStatus
+  model             String
+  difficulty        Difficulty
+  topics            String[]
+  definition        Json
+  tests             Json
+  referenceSolution String                 @db.Text
+  validationLog     String                 @db.Text
+  createdAt         DateTime               @default(now())
+  questions         InterviewQuestion[]
+
+  @@index([status, difficulty])
+}
+
+/// A run of candidate code. RUN = visible examples, SUBMIT = all tests,
+/// CUSTOM = candidate-provided input. `idempotencyKey` makes retries safe.
+model Submission {
+  id              String            @id @default(cuid())
+  roomId          String
+  questionId      String
+  userId          String
+  kind            SubmissionKind
+  language        String
+  code            String            @db.Text
+  customInput     String?           @db.Text
+  status          SubmissionStatus  @default(QUEUED)
+  verdict         Verdict?
+  passedCount     Int?
+  totalCount      Int?
+  compileOutput   String?           @db.Text
+  /// Sanitised per-test results: hidden tests only carry a verdict and time.
+  results         Json?
+  executionTimeMs Int?
+  judgeVersion    String?
+  idempotencyKey  String
+  error           String?
+  createdAt       DateTime          @default(now())
+  completedAt     DateTime?
+  room            InterviewRoom     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  question        InterviewQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, idempotencyKey])
+  @@index([roomId, createdAt])
+  @@index([questionId, kind, createdAt])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+/// Automated evaluation of an interview. Scores are 0-100. Correctness for
+/// coding questions comes from the judge, never from the language model.
 model InterviewReport {
-  id           String        @id @default(cuid())
-  roomId       String        @unique
-  techScore    Int
-  commScore    Int
-  overallScore Int
-  strengths    String[]
-  weaknesses   String[]
-  aiFeedback   String
-  createdAt    DateTime      @default(now())
-  room         InterviewRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  id               String           @id @default(cuid())
+  roomId           String           @unique
+  status           EvaluationStatus @default(COMPLETED)
+  techScore        Int?
+  commScore        Int?
+  overallScore     Int?
+  strengths        String[]
+  weaknesses       String[]
+  aiFeedback       String           @default("")
+  rubricVersion    String?
+  model            String?
+  dimensionScores  Json?
+  questionFeedback Json?
+  judgeSummary     Json?
+  integritySummary Json?
+  attempts         Int              @default(0)
+  error            String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @default(now()) @updatedAt
+  completedAt      DateTime?
+  room             InterviewRoom    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
+
+/// One proctoring signal (tab switch, face absence, camera problem...). The
+/// server assigns severity; signals are for human review, not proof of misconduct.
+model ProctoringEvent {
+  id            String              @id @default(cuid())
+  roomId        String
+  userId        String
+  clientEventId String
+  type          ProctoringEventType
+  severity      ProctoringSeverity
+  startedAt     DateTime
+  endedAt       DateTime?
+  durationMs    Int?
+  receivedAt    DateTime            @default(now())
+  metadata      Json?
+  reviewStatus  ReviewStatus        @default(UNREVIEWED)
+  reviewedAt    DateTime?
+  room          InterviewRoom       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, clientEventId])
+  @@index([roomId, startedAt])
+}
+
+/// Structured data extracted from an uploaded resume. The file itself is not stored.
+model ResumeProfile {
+  id            String          @id @default(cuid())
+  userId        String
+  fileName      String
+  fileSizeBytes Int
+  status        ResumeStatus    @default(PROCESSING)
+  summary       String?         @db.Text
+  skills        String[]        @default([])
+  projects      Json?
+  experience    Json?
+  confirmedAt   DateTime?
+  error         String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @default(now()) @updatedAt
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rooms         InterviewRoom[]
+
+  @@index([userId, createdAt])
 }
 
 enum Role {
@@ -109,8 +294,29 @@ enum Role {
 }
 
 enum InterviewRoomStatus {
-  ACTIVE
+  CREATED
+  IN_PROGRESS
   COMPLETED
+  CANCELLED
+}
+
+enum InterviewMode {
+  DSA
+  TECHNICAL
+  BEHAVIORAL
+  MIXED
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum ParticipantRole {
+  CANDIDATE
+  INTERVIEWER
+  OBSERVER
 }
 
 enum InterviewEventType {
@@ -119,4 +325,96 @@ enum InterviewEventType {
   CODE_CHANGE
   USER_JOINED
   USER_LEFT
+  STATE_CHANGED
+  QUESTION_ASKED
+  ANSWER_SUBMITTED
+  FOLLOW_UP_ASKED
+}
+
+enum QuestionKind {
+  CODING
+  TECHNICAL
+  BEHAVIORAL
+}
+
+enum QuestionSource {
+  BANK
+  AI_GENERATED
+  RESUME
+  AI_FALLBACK_BANK
+}
+
+enum QuestionStatus {
+  ACTIVE
+  ANSWERED
+  SKIPPED
+}
+
+enum GeneratedProblemStatus {
+  VALIDATED
+  REJECTED
+}
+
+enum SubmissionKind {
+  RUN
+  SUBMIT
+  CUSTOM
+}
+
+enum SubmissionStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum Verdict {
+  ACCEPTED
+  WRONG_ANSWER
+  COMPILATION_ERROR
+  RUNTIME_ERROR
+  TIME_LIMIT_EXCEEDED
+  MEMORY_LIMIT_EXCEEDED
+  OUTPUT_LIMIT_EXCEEDED
+  INTERNAL_ERROR
+}
+
+enum EvaluationStatus {
+  NOT_STARTED
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ProctoringEventType {
+  PROCTORING_STARTED
+  PROCTORING_STOPPED
+  TAB_HIDDEN
+  TAB_RETURNED
+  WINDOW_BLUR
+  FACE_NOT_DETECTED
+  MULTIPLE_FACES_DETECTED
+  CAMERA_PERMISSION_DENIED
+  CAMERA_INTERRUPTED
+  NETWORK_INTERRUPTED
+}
+
+enum ProctoringSeverity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ReviewStatus {
+  UNREVIEWED
+  ACKNOWLEDGED
+  DISMISSED
+}
+
+enum ResumeStatus {
+  PROCESSING
+  READY
+  FAILED
 }
