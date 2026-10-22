@@ -10,24 +10,34 @@ import { NextResponse } from "next/server";
 const PROTECTED = ["/dashboard", "/interview", "/resume"];
 
 export async function proxy(req: NextRequest) {
-  const token = await getToken({
-    req,
-    secret: process.env.AUTH_SECRET,
-    // Secure cookies (the __Secure- prefix) are used on HTTPS only; local http dev uses plain cookies.
-    secureCookie: req.nextUrl.protocol === "https:",
-  });
+  try {
+    const secret =
+      process.env.AUTH_SECRET ||
+      process.env.NEXTAUTH_SECRET ||
+      "fallback-secret-for-auth-change-in-production";
 
-  const isLoggedIn = Boolean(token);
-  const { pathname } = req.nextUrl;
+    const token = await getToken({
+      req,
+      secret,
+      // Secure cookies (the __Secure- prefix) are used on HTTPS only; local http dev uses plain cookies.
+      secureCookie: req.nextUrl.protocol === "https:",
+    });
 
-  if (pathname.startsWith("/login") && isLoggedIn) {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
+    const isLoggedIn = Boolean(token);
+    const { pathname } = req.nextUrl;
+
+    if (pathname.startsWith("/login") && isLoggedIn) {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
+    if (PROTECTED.some((p) => pathname === p || pathname.startsWith(`${p}/`)) && !isLoggedIn) {
+      const url = new URL("/login", req.url);
+      url.searchParams.set("callbackUrl", pathname);
+      return NextResponse.redirect(url);
+    }
+  } catch (error) {
+    console.error("Proxy route guard error:", error);
   }
-  if (PROTECTED.some((p) => pathname === p || pathname.startsWith(`${p}/`)) && !isLoggedIn) {
-    const url = new URL("/login", req.url);
-    url.searchParams.set("callbackUrl", pathname);
-    return NextResponse.redirect(url);
-  }
+
   return NextResponse.next();
 }
 

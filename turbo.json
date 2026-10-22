@@ -6,7 +6,9 @@
     "DATABASE_URL",
     "REDIS_URL",
     "AUTH_SECRET",
+    "NEXTAUTH_SECRET",
     "AUTH_URL",
+    "NEXTAUTH_URL",
     "AUTH_TRUST_HOST",
     "AUTH_GITHUB_ID",
     "AUTH_GITHUB_SECRET",
@@ -68,3 +70,4 @@
     }
   }
 }
+

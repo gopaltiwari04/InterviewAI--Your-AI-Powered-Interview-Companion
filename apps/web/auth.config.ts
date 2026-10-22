@@ -42,6 +42,8 @@ if (testLoginEnabled) {
 }
 
 const authConfig: NextAuthConfig = {
+  trustHost: true,
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "fallback-secret-for-auth-change-in-production",
   providers,
   session: {
     strategy: "jwt",
